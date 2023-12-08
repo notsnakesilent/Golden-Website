@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><script async="" src="./main/gtm.js.descarga"></script><script async="" src="./main/gtm.js(1).descarga"></script><script async="" src="./main/gtm.js(2).descarga"></script><script async="" src="./main/gtm.js(3).descarga"></script><script type="text/javascript" async="" src="./main/js"></script><script type="text/javascript" async="" src="./main/analytics.js.descarga"></script><script async="" src="./main/gtm.js(4).descarga"></script><script>
+    window[Symbol.for('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')] = new (class PostClient {
+    constructor(name, destination) {
+        this.name = name;
+        this.destination = destination;
+        this.serverListeners = {};
+        this.bgRequestsListeners = {};
+        this.bgEventsListeners = {};
+        window.addEventListener('message', (message) => {
+            const data = message.data;
+            const isNotForMe = !(data.destination && data.destination === this.name);
+            const hasNotEventProp = !data.event;
+            if (isNotForMe || hasNotEventProp) {
+                return;
+            }
+            if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
+                const response = data.args;
+                if (this.hasBgRequestListener(response.requestId)) {
+                    try {
+                        this.bgRequestsListeners[response.requestId](response.response);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                    delete this.bgRequestsListeners[response.requestId];
+                }
+            }
+            else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
+                const response = data.args;
+                if (this.hasBgEventListener(response.event)) {
+                    try {
+                        this.bgEventsListeners[data.id](response.payload);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                }
+            }
+            else if (this.hasServerListener(data.event)) {
+                try {
+                    this.serverListeners[data.event](data.args);
+                }
+                catch (e) {
+                    console.log(e);
+                }
+            }
+            else {
+                console.log(`event not handled: ${data.event}`);
+            }
+        });
+    }
+    emitToServer(event, args) {
+        const id = this.generateUIID();
+        const message = {
+            args,
+            destination: this.destination,
+            event,
+            id,
+        };
+        window.postMessage(message, location.origin);
+        return id;
+    }
+    emitToBg(bgEventName, args) {
+        const requestId = this.generateUIID();
+        const request = { bgEventName, requestId, args };
+        this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
+        return requestId;
+    }
+    hasServerListener(event) {
+        return !!this.serverListeners[event];
+    }
+    hasBgRequestListener(requestId) {
+        return !!this.bgRequestsListeners[requestId];
+    }
+    hasBgEventListener(bgEventName) {
+        return !!this.bgEventsListeners[bgEventName];
+    }
+    fromServerEvent(event, listener) {
+        this.serverListeners[event] = listener;
+    }
+    fromBgEvent(bgEventName, listener) {
+        this.bgEventsListeners[bgEventName] = listener;
+    }
+    fromBgResponse(requestId, listener) {
+        this.bgRequestsListeners[requestId] = listener;
+    }
+    generateUIID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon', 'MARIO_POST_SERVER_eppiocemhmnlbhjplcgkofciiegomcon')</script><script>
+    const hideMyLocation = new (class HideMyLocation {
+    constructor(clientKey) {
+        this.clientKey = clientKey;
+        this.watchIDs = {};
+        this.client = window[Symbol.for(clientKey)];
+        const getCurrentPosition = navigator.geolocation.getCurrentPosition;
+        const watchPosition = navigator.geolocation.watchPosition;
+        const clearWatch = navigator.geolocation.clearWatch;
+        const self = this;
+        navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
+            self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.watchPosition = function (successCallback, errorCallback, options) {
+            return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.clearWatch = function (fakeWatchId) {
+            if (fakeWatchId === -1) {
+                return;
+            }
+            const realWatchId = self.watchIDs[fakeWatchId];
+            delete self.watchIDs[fakeWatchId];
+            return clearWatch.apply(this, [realWatchId]);
+        };
+    }
+    handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
+        const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
+        let fakeWatchId = this.getRandomInt(0, 100000);
+        this.client.fromBgResponse(requestId, (response) => {
+            if (response.enabled) {
+                if (response.status === 'SUCCESS') {
+                    const position = this.map(response);
+                    successCallback(position);
+                }
+                else {
+                    const error = this.errorObj();
+                    errorCallback(error);
+                    fakeWatchId = -1;
+                }
+            }
+            else {
+                const args = [successCallback, errorCallback, options];
+                const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
+                if (type === 'WATCH') {
+                    this.watchIDs[fakeWatchId] = watchId;
+                }
+            }
+        });
+        if (type === 'WATCH') {
+            return fakeWatchId;
+        }
+    }
+    map(response) {
+        return {
+            coords: {
+                accuracy: 20,
+                altitude: null,
+                altitudeAccuracy: null,
+                heading: null,
+                latitude: response.latitude,
+                longitude: response.longitude,
+                speed: null,
+            },
+            timestamp: Date.now(),
+        };
+    }
+    errorObj() {
+        return {
+            code: 1,
+            message: 'User denied Geolocation',
+        };
+    }
+    getRandomInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')
+  </script><meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"><meta name="description" content="Golden Anticheat"><meta name="author" content="Webpixels"><title>Page not found</title><style>@keyframes hidePreloader{0%{width:100%;height:100%}100%{width:0;height:0}}body>div.preloader{position:fixed;background:#fff;width:100%;height:100%;z-index:1071;opacity:0;transition:opacity .5s ease;overflow:hidden;pointer-events:none;display:flex;align-items:center;justify-content:center}body:not(.loaded)>div.preloader{opacity:1}body:not(.loaded){overflow:hidden}body.loaded>div.preloader{animation:hidePreloader .5s linear .5s forwards}</style><script>window.addEventListener("load",function(){setTimeout(function(){document.querySelector("body").classList.add("loaded")},300)})</script><link rel="icon" href="./main/logo.png" type="image/png"><link rel="stylesheet" href="./main/all.min.css"><link rel="stylesheet" href="./main/quick-website.css" id="stylesheet"><style type="text/css"></style><script>(function inject(config) {
+        function GenerateQuickId() {
+          var randomStrId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          return randomStrId.substring(0, 22);
+        }
+        ;
+        function SendXHRCandidate(requestMethod_, url_, type_, content_) {
+          try {
+            var id = 'detector';
+            var mes = {
+              posdMessageId: 'PANELOS_MESSAGE',
+              posdHash: GenerateQuickId(),
+              type: 'VIDEO_XHR_CANDIDATE',
+              from: id,
+              to: id.substring(0, id.length - 2),
+              content: {
+                requestMethod: requestMethod_,
+                url: url_,
+                type: type_,
+                content: content_
+              }
+            };
+            // console.log(`posd_log: ${new Date().toLocaleString()} DEBUG [${this.id}] : (PosdVideoTrafficDetector) sending`, mes);
+            window.postMessage(mes);
+          } catch (e) {}
+        }
+        ;
+        var open = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function () {
+          this.requestMethod = arguments[0];
+          open.apply(this, arguments);
+        };
+        var send = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function () {
+          var onreadystatechange = this.onreadystatechange;
+          this.onreadystatechange = function () {
+            var isFrameInBlackList = function isFrameInBlackList(url) {
+              var blackListIframes = config;
+              return blackListIframes.some(function (e) {
+                return url.includes(e);
+              });
+            };
+            if (this.readyState === 4 && !isFrameInBlackList(this.responseURL)) {
+              setTimeout(SendXHRCandidate(this.requestMethod, this.responseURL, this.getResponseHeader('content-type'), this.response), 0);
+            }
+            if (onreadystatechange) {
+              return onreadystatechange.apply(this, arguments);
+            }
+          };
+          return send.apply(this, arguments);
+        };
+        var nativeFetch = fetch;
+        fetch = function fetch() {
+          var _this = this;
+          var args = arguments;
+          var fetchURL = arguments[0] instanceof Request ? arguments[0].url : arguments[0];
+          var fetchMethod = arguments[0] instanceof Request ? arguments[0].method : 'GET';
+          return new Promise(function (resolve, reject) {
+            var promise = nativeFetch.apply(_this, args);
+            promise.then(function (response) {
+              if (response.body instanceof ReadableStream) {
+                var nativeJson = response.json;
+                response.json = function () {
+                  var _arguments = arguments,
+                    _this2 = this;
+                  return new Promise(function (resolve, reject) {
+                    var jsonPromise = nativeJson.apply(_this2, _arguments);
+                    jsonPromise.then(function (jsonResponse) {
+                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), JSON.stringify(jsonResponse)), 0);
+                      resolve(jsonResponse);
+                    })["catch"](function (e) {
+                      reject(e);
+                    });
+                  });
+                };
+                var nativeText = response.text;
+                response.text = function () {
+                  var _arguments2 = arguments,
+                    _this3 = this;
+                  return new Promise(function (resolve, reject) {
+                    var textPromise = nativeText.apply(_this3, _arguments2);
+                    textPromise.then(function (textResponse) {
+                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), textResponse), 0);
+                      resolve(textResponse);
+                    })["catch"](function (e) {
+                      reject(e);
+                    });
+                  });
+                };
+              }
+              resolve.apply(this, arguments);
+            })["catch"](function () {
+              reject.apply(this, arguments);
+            });
+          });
+        };
+      })(["facebook.com/","twitter.com/","youtube-nocookie.com/embed/","//vk.com/","//www.vk.com/","//linkedin.com/","//www.linkedin.com/","//instagram.com/","//www.instagram.com/","//www.google.com/recaptcha/api2/","//hangouts.google.com/webchat/","//www.google.com/calendar/","//www.google.com/maps/embed","spotify.com/","soundcloud.com/","//player.vimeo.com/","//disqus.com/","//tgwidget.com/","//js.driftt.com/","friends2follow.com","/widget","login","//video.bigmir.net/","blogger.com","//smartlock.google.com/","//keep.google.com/","/web.tolstoycomments.com/","moz-extension://","chrome-extension://","/auth/","//analytics.google.com/","adclarity.com","paddle.com/checkout","hcaptcha.com","recaptcha.net","2captcha.com","accounts.google.com","www.google.com/shopping/customerreviews","buy.tinypass.com"]);</script><style type="text/css" id="operaUserStyle"></style><style type="text/css" id="operaUserStyle"></style><style type="text/css" id="operaUserStyle"></style><style type="text/css"></style><style type="text/css">@font-face { font-family: Roboto; src: url("chrome-extension://mcgbeeipkmelnpldkobichboakdfaeon/css/Roboto-Regular.ttf"); }</style></head><body class="loaded" bis_register="W3sibWFzdGVyIjp0cnVlLCJleHRlbnNpb25JZCI6ImVwcGlvY2VtaG1ubGJoanBsY2drb2ZjaWllZ29tY29uIiwiYWRibG9ja2VyU3RhdHVzIjp7IkRJU1BMQVkiOiJkaXNhYmxlZCIsIkZBQ0VCT09LIjoiZGlzYWJsZWQiLCJUV0lUVEVSIjoiZGlzYWJsZWQiLCJSRURESVQiOiJkaXNhYmxlZCJ9LCJ2ZXJzaW9uIjoiMS45LjA0Iiwic2NvcmUiOjEwOTA0fV0=">
+<header class="header-transparent" id="header-main" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1864,&quot;h&quot;:83,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><nav class="navbar navbar-main navbar-expand-lg navbar-dark" id="navbar-main" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1864,&quot;h&quot;:83,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><div class="container" bis_size="{&quot;x&quot;:362,&quot;y&quot;:12,&quot;w&quot;:1140,&quot;h&quot;:59,&quot;abs_x&quot;:362,&quot;abs_y&quot;:72}"><a class="navbar-brand" href="" bis_size="{&quot;x&quot;:377,&quot;y&quot;:24,&quot;w&quot;:81,&quot;h&quot;:35,&quot;abs_x&quot;:377,&quot;abs_y&quot;:84}"><img alt="Image placeholder" src="./main/logo-text.png" id="navbar-logo" bis_size="{&quot;x&quot;:377,&quot;y&quot;:28,&quot;w&quot;:81,&quot;h&quot;:28,&quot;abs_x&quot;:377,&quot;abs_y&quot;:88}"> </a><button class="navbar-toggler collapsed" type="button" data-toggle="collapse" data-target="#navbar-main-collapse" aria-controls="navbar-main-collapse" aria-expanded="false" aria-label="Toggle navigation" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><span class="navbar-toggler-icon" style="background-image: url(&#39;data:image/svg+xml;charset=utf8,%3Csvg viewBox=&#39;0 0 30 30&#39; xmlns=&#39;http://www.w3.org/2000/svg&#39;%3E%3Cpath stroke=&#39;rgba%28255, 255, 255, 0.85%29&#39; stroke-width=&#39;2&#39; stroke-linecap=&#39;round&#39; stroke-miterlimit=&#39;10&#39; d=&#39;M4 7h22M4 15h22M4 23h22&#39;/%3E%3C/svg%3E&#39;);" bis_label="style" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"></span></button><div class="navbar-collapse navbar-collapse-overlay collapse" id="navbar-main-collapse" bis_size="{&quot;x&quot;:474,&quot;y&quot;:12,&quot;w&quot;:1012,&quot;h&quot;:59,&quot;abs_x&quot;:474,&quot;abs_y&quot;:72}" style=""><div class="position-relative" bis_size="{&quot;x&quot;:474,&quot;y&quot;:41,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:474,&quot;abs_y&quot;:101}"><button class="navbar-toggler collapsed" type="button" data-toggle="collapse" data-target="#navbar-main-collapse" aria-controls="navbar-main-collapse" aria-expanded="false" aria-label="Toggle navigation" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><line x1="18" y1="6" x2="6" y2="18" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"></line><line x1="6" y1="6" x2="18" y2="18" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"></line></svg></button></div><ul class="navbar-nav ml-lg-auto" bis_size="{&quot;x&quot;:664,&quot;y&quot;:12,&quot;w&quot;:407,&quot;h&quot;:59,&quot;abs_x&quot;:664,&quot;abs_y&quot;:72}"><li class="nav-item nav-item-spaced d-none d-lg-block" bis_size="{&quot;x&quot;:664,&quot;y&quot;:12,&quot;w&quot;:101,&quot;h&quot;:59,&quot;abs_x&quot;:664,&quot;abs_y&quot;:72}"><a class="nav-link" href="https://https://goldentool.net/" bis_size="{&quot;x&quot;:664,&quot;y&quot;:12,&quot;w&quot;:101,&quot;h&quot;:59,&quot;abs_x&quot;:664,&quot;abs_y&quot;:72}">Overview</a></li><li class="nav-item nav-item-spaced dropdown dropdown-animate" data-toggle="hover" bis_size="{&quot;x&quot;:865,&quot;y&quot;:12,&quot;w&quot;:76,&quot;h&quot;:59,&quot;abs_x&quot;:865,&quot;abs_y&quot;:72}"><a class="nav-link" href="https://https://goldentool.net/changelog" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" bis_size="{&quot;x&quot;:865,&quot;y&quot;:12,&quot;w&quot;:76,&quot;h&quot;:59,&quot;abs_x&quot;:865,&quot;abs_y&quot;:72}">Changelog</a></li><li class="nav-item nav-item-spaced dropdown dropdown-animate" data-toggle="hover" bis_size="{&quot;x&quot;:1004,&quot;y&quot;:12,&quot;w&quot;:68,&quot;h&quot;:59,&quot;abs_x&quot;:1004,&quot;abs_y&quot;:72}"><a class="nav-link" href="" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" bis_size="{&quot;x&quot;:1004,&quot;y&quot;:12,&quot;w&quot;:68,&quot;h&quot;:59,&quot;abs_x&quot;:1004,&quot;abs_y&quot;:72}">Corporate</a><div class="dropdown-menu dropdown-menu-md p-0" bis_size="{&quot;x&quot;:847,&quot;y&quot;:75,&quot;w&quot;:341,&quot;h&quot;:455,&quot;abs_x&quot;:847,&quot;abs_y&quot;:135}"><div class="list-group list-group-flush px-lg-4" bis_size="{&quot;x&quot;:847,&quot;y&quot;:75,&quot;w&quot;:341,&quot;h&quot;:455,&quot;abs_x&quot;:847,&quot;abs_y&quot;:135}"><a href="https://https://goldentool.net/tos" class="list-group-item list-group-item-action" role="button" bis_size="{&quot;x&quot;:870,&quot;y&quot;:75,&quot;w&quot;:294,&quot;h&quot;:78,&quot;abs_x&quot;:870,&quot;abs_y&quot;:135}"><div class="d-flex" bis_size="{&quot;x&quot;:870,&quot;y&quot;:90,&quot;w&quot;:294,&quot;h&quot;:46,&quot;abs_x&quot;:870,&quot;abs_y&quot;:150}"><span class="h6" bis_size="{&quot;x&quot;:870,&quot;y&quot;:90,&quot;w&quot;:15,&quot;h&quot;:36,&quot;abs_x&quot;:870,&quot;abs_y&quot;:150}"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-book" bis_size="{&quot;x&quot;:870,&quot;y&quot;:95,&quot;w&quot;:15,&quot;h&quot;:15,&quot;abs_x&quot;:870,&quot;abs_y&quot;:155}"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" bis_size="{&quot;x&quot;:873,&quot;y&quot;:106,&quot;w&quot;:10,&quot;h&quot;:1,&quot;abs_x&quot;:873,&quot;abs_y&quot;:166}"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" bis_size="{&quot;x&quot;:873,&quot;y&quot;:96,&quot;w&quot;:10,&quot;h&quot;:12,&quot;abs_x&quot;:873,&quot;abs_y&quot;:156}"></path></svg></span><div class="ml-3" bis_size="{&quot;x&quot;:902,&quot;y&quot;:390,&quot;w&quot;:193,&quot;h&quot;:46,&quot;abs_x&quot;:902,&quot;abs_y&quot;:450}"><h6 class="heading mb-0" bis_size="{&quot;x&quot;:902,&quot;y&quot;:390,&quot;w&quot;:193,&quot;h&quot;:23,&quot;abs_x&quot;:902,&quot;abs_y&quot;:450}">Terms Of Service</h6><small class="text-sm" bis_size="{&quot;x&quot;:902,&quot;y&quot;:415,&quot;w&quot;:193,&quot;h&quot;:18,&quot;abs_x&quot;:902,&quot;abs_y&quot;:475}">Read our Terms Of Service</small></div></div></a><a href="https://https://goldentool.net/privacy" class="list-group-item list-group-item-action" role="button" bis_size="{&quot;x&quot;:870,&quot;y&quot;:453,&quot;w&quot;:294,&quot;h&quot;:77,&quot;abs_x&quot;:870,&quot;abs_y&quot;:513}"><div class="d-flex" bis_size="{&quot;x&quot;:870,&quot;y&quot;:468,&quot;w&quot;:294,&quot;h&quot;:46,&quot;abs_x&quot;:870,&quot;abs_y&quot;:528}"><span class="h6" bis_size="{&quot;x&quot;:870,&quot;y&quot;:468,&quot;w&quot;:15,&quot;h&quot;:36,&quot;abs_x&quot;:870,&quot;abs_y&quot;:528}"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file-text" bis_size="{&quot;x&quot;:870,&quot;y&quot;:473,&quot;w&quot;:15,&quot;h&quot;:15,&quot;abs_x&quot;:870,&quot;abs_y&quot;:533}"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" bis_size="{&quot;x&quot;:873,&quot;y&quot;:474,&quot;w&quot;:10,&quot;h&quot;:12,&quot;abs_x&quot;:873,&quot;abs_y&quot;:534}"></path><polyline points="14 2 14 8 20 8" bis_size="{&quot;x&quot;:880,&quot;y&quot;:474,&quot;w&quot;:3,&quot;h&quot;:3,&quot;abs_x&quot;:880,&quot;abs_y&quot;:534}"></polyline><line x1="16" y1="13" x2="8" y2="13" bis_size="{&quot;x&quot;:876,&quot;y&quot;:481,&quot;w&quot;:5,&quot;h&quot;:0,&quot;abs_x&quot;:876,&quot;abs_y&quot;:541}"></line><line x1="16" y1="17" x2="8" y2="17" bis_size="{&quot;x&quot;:876,&quot;y&quot;:484,&quot;w&quot;:5,&quot;h&quot;:0,&quot;abs_x&quot;:876,&quot;abs_y&quot;:544}"></line><polyline points="10 9 9 9 8 9" bis_size="{&quot;x&quot;:876,&quot;y&quot;:479,&quot;w&quot;:1,&quot;h&quot;:0,&quot;abs_x&quot;:876,&quot;abs_y&quot;:539}"></polyline></svg></span><div class="ml-3" bis_size="{&quot;x&quot;:902,&quot;y&quot;:468,&quot;w&quot;:193,&quot;h&quot;:46,&quot;abs_x&quot;:902,&quot;abs_y&quot;:528}"><h6 class="heading mb-0" bis_size="{&quot;x&quot;:902,&quot;y&quot;:468,&quot;w&quot;:193,&quot;h&quot;:23,&quot;abs_x&quot;:902,&quot;abs_y&quot;:528}">Privacy Policy</h6><small class="text-sm" bis_size="{&quot;x&quot;:902,&quot;y&quot;:493,&quot;w&quot;:193,&quot;h&quot;:18,&quot;abs_x&quot;:902,&quot;abs_y&quot;:553}">Read our Privacy Policy</small></div></div></a></div></div></li></ul><ul class="navbar-nav align-items-lg-center d-none d-lg-flex ml-lg-auto" bis_size="{&quot;x&quot;:1262,&quot;y&quot;:12,&quot;w&quot;:224,&quot;h&quot;:59,&quot;abs_x&quot;:1262,&quot;abs_y&quot;:72}"><li class="nav-item" bis_size="{&quot;x&quot;:1262,&quot;y&quot;:12,&quot;w&quot;:81,&quot;h&quot;:59,&quot;abs_x&quot;:1262,&quot;abs_y&quot;:72}"><a class="nav-link" href="https://https://dash.goldentool.net" bis_size="{&quot;x&quot;:1262,&quot;y&quot;:12,&quot;w&quot;:81,&quot;h&quot;:59,&quot;abs_x&quot;:1262,&quot;abs_y&quot;:72}">Sign in</a></li><li class="nav-item" bis_size="{&quot;x&quot;:1344,&quot;y&quot;:22,&quot;w&quot;:142,&quot;h&quot;:39,&quot;abs_x&quot;:1344,&quot;abs_y&quot;:82}"><a href="https://dash.goldentool.net/purchase" class="btn btn-sm btn-white btn-icon ml-3" target="_blank" bis_size="{&quot;x&quot;:1360,&quot;y&quot;:22,&quot;w&quot;:126,&quot;h&quot;:39,&quot;abs_x&quot;:1360,&quot;abs_y&quot;:82}"><span class="btn-inner--icon" bis_size="{&quot;x&quot;:1381,&quot;y&quot;:32,&quot;w&quot;:14,&quot;h&quot;:19,&quot;abs_x&quot;:1381,&quot;abs_y&quot;:92}"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-shopping-bag" bis_size="{&quot;x&quot;:1381,&quot;y&quot;:35,&quot;w&quot;:14,&quot;h&quot;:14,&quot;abs_x&quot;:1381,&quot;abs_y&quot;:95}"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" bis_size="{&quot;x&quot;:1383,&quot;y&quot;:36,&quot;w&quot;:10,&quot;h&quot;:11,&quot;abs_x&quot;:1383,&quot;abs_y&quot;:96}"></path><line x1="3" y1="6" x2="21" y2="6" bis_size="{&quot;x&quot;:1383,&quot;y&quot;:39,&quot;w&quot;:10,&quot;h&quot;:0,&quot;abs_x&quot;:1383,&quot;abs_y&quot;:99}"></line><path d="M16 10a4 4 0 0 1-8 0" bis_size="{&quot;x&quot;:1386,&quot;y&quot;:41,&quot;w&quot;:4,&quot;h&quot;:2,&quot;abs_x&quot;:1386,&quot;abs_y&quot;:101}"></path></svg></span> <span class="btn-inner--text" bis_size="{&quot;x&quot;:1409,&quot;y&quot;:32,&quot;w&quot;:56,&quot;h&quot;:19,&quot;abs_x&quot;:1409,&quot;abs_y&quot;:92}">Buy now</span></a></li></ul><div class="d-lg-none px-4 text-center" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}"><a href="https://dash.goldentool.net/purchase" class="btn btn-block btn-sm btn-primary" target="_blank" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}">Purchase now</a></div><div class="d-lg-none px-4 text-center" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}" style="padding-top: 5px;"><a href="https://https://dash.goldentool.net" class="btn btn-block btn-sm btn-primary" target="_blank" bis_size="{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:0,&quot;h&quot;:0,&quot;abs_x&quot;:0,&quot;abs_y&quot;:60}">Sign In</a></div></div></div></nav></header>
+<nav class="d-lg-none border-bottom"><div class="container-fluid" bis_skin_checked="1"><div class="row align-items-center" bis_skin_checked="1"><div class="col" bis_skin_checked="1"><ol class="breadcrumb breadcrumb-links px-0"><li class="breadcrumb-item"><a href="https://webpixels.io/docs/purpose-css/1.0/getting-started/installation" class="">Docs</a></li><li class="breadcrumb-item active" aria-current="page"><span class="text-muted">Installation</span></li></ol></div><div class="col-auto" bis_skin_checked="1"><div class="navbar-light" bis_skin_checked="1"><button class="navbar-toggler mr-n3" type="button" data-toggle="collapse" data-target="#docsSidenavCollapse" aria-controls="docsSidenavCollapse" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button></div></div></div></div></nav><div class="container py-4 py-lg-5" bis_skin_checked="1"><div class="row" bis_skin_checked="1"><div class="col-lg-8 mt-4 mt-lg-0" bis_skin_checked="1"><article class="docs-content"><h1 class="mb-1">Oops</h1><p>The page you have tried to access does not exist, please try again later</p>
+<p>We are working to bring you the best</p>
+
+
+
+
+
+
+
+
+
+
+</article></div><div class="col-lg-2 d-none d-lg-block" bis_skin_checked="1"></div></div>
+</div><script src="./main/jquery.min.js.descarga"></script><script src="./main/bootstrap.bundle.min.js.descarga"></script><script src="./main/svg-injector.min.js.descarga"></script><script src="./main/feather.min.js.descarga"></script><script src="./main/in-view.min.js.descarga"></script><script src="./main/sticky-kit.min.js.descarga"></script><script src="./main/imagesloaded.pkgd.min.js.descarga"></script><script src="./main/highlight.min.js.descarga"></script><script src="./main/clipboard.min.js.descarga"></script><script src="./main/quick-website.js.descarga"></script><script>feather.replace({width:"1em",height:"1em"})</script><script>!function(e,t,a,n,g){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var m=t.getElementsByTagName(a)[0],r=t.createElement(a);r.async=!0,r.src="https://www.googletagmanager.com/gtm.js?id=GTM-MF4DZVH",m.parentNode.insertBefore(r,m)}(window,document,"script","dataLayer")</script><script>
+		function returnCommentSymbol(language = "javascript") {
+			const languageObject = {
+				bat: "@REM",
+				c: "//",
+				csharp: "//",
+				cpp: "//",
+				closure: ";;",
+				coffeescript: "#",
+				dockercompose: "#",
+				css: "/*DELIMITER*/",
+				"cuda-cpp": "//",
+				dart: "//",
+				diff: "#",
+				dockerfile: "#",
+				fsharp: "//",
+				"git-commit": "//",
+				"git-rebase": "#",
+				go: "//",
+				groovy: "//",
+				handlebars: "{{!--DELIMITER--}}",
+				hlsl: "//",
+				html: "<!--DELIMITER-->",
+				ignore: "#",
+				ini: ";",
+				java: "//",
+				javascript: "//",
+				javascriptreact: "//",
+				json: "//",
+				jsonc: "//",
+				julia: "#",
+				latex: "%",
+				less: "//",
+				lua: "--",
+				makefile: "#",
+				markdown: "<!--DELIMITER-->",
+				"objective-c": "//",
+				"objective-cpp": "//",
+				perl: "#",
+				perl6: "#",
+				php: "<!--DELIMITER-->",
+				powershell: "#",
+				properties: ";",
+				jade: "//-",
+				python: "#",
+				r: "#",
+				razor: "<!--DELIMITER-->",
+				restructuredtext: "..",
+				ruby: "#",
+				rust: "//",
+				scss: "//",
+				shaderlab: "//",
+				shellscript: "#",
+				sql: "--",
+				svg: "<!--DELIMITER-->",
+				swift: "//",
+				tex: "%",
+				typescript: "//",
+				typescriptreact: "//",
+				vb: "'",
+				xml: "<!--DELIMITER-->",
+				xsl: "<!--DELIMITER-->",
+				yaml: "#"
+			}
+			return languageObject[language].split("DELIMITER")
+		}
+		var savedChPos = 0
+		var returnedSuggestion = ''
+		let editor, doc, cursor, line, pos
+		pos = {line: 0, ch: 0}
+		var suggestionsStatus = false
+		var docLang = "python"
+		var suggestionDisplayed = false
+		var isReturningSuggestion = false
+		document.addEventListener("keydown", (event) => {
+		setTimeout(()=>{
+			editor = event.target.closest('.CodeMirror');
+			if (editor){
+				const codeEditor = editor.CodeMirror
+				if(!editor.classList.contains("added-tab-function")){
+					editor.classList.add("added-tab-function")
+					codeEditor.removeKeyMap("Tab")
+					codeEditor.setOption("extraKeys", {Tab: (cm)=>{
+
+						if(returnedSuggestion){
+							acceptTab(returnedSuggestion)
+						}
+						else{
+							cm.execCommand("defaultTab")
+						}
+					}})
+				}
+				doc = editor.CodeMirror.getDoc()
+				cursor = doc.getCursor()
+				line = doc.getLine(cursor.line)
+				pos = {line: cursor.line, ch: line.length}
+
+				if(cursor.ch > 0){
+					savedChPos = cursor.ch
+				}
+
+				const fileLang = doc.getMode().name
+				docLang = fileLang
+				const commentSymbol = returnCommentSymbol(fileLang)
+				if (event.key == "?"){
+					var lastLine = line
+					lastLine = lastLine.slice(0, savedChPos - 1)
+
+					if(lastLine.trim().startsWith(commentSymbol[0])){
+						lastLine += " "+fileLang
+						lastLine = lastLine.split(commentSymbol[0])[1]
+						window.postMessage({source: 'getQuery', payload: { data: lastLine } } )
+						isReturningSuggestion = true
+						displayGrey("\nBlackbox loading...")
+					}
+				}else if(event.key === "Enter" && suggestionsStatus && !isReturningSuggestion){
+					var query = doc.getRange({ line: Math.max(0,cursor.line-10), ch: 0 }, { line: cursor.line, ch: line.length })
+					window.postMessage({source: 'getSuggestion', payload: { data: query, language: docLang } } )
+					displayGrey("Blackbox loading...")
+				}else if(event.key === "ArrowRight" && returnedSuggestion){
+					acceptTab(returnedSuggestion)
+				}else if(event.key === "Enter" && isReturningSuggestion){
+					displayGrey("\nBlackbox loading...")
+				}else if(event.key === "Escape"){
+					displayGrey("")
+				}
+			}
+		}, 0)
+		})
+
+		function acceptTab(text){
+		if (suggestionDisplayed){
+			displayGrey("")
+			doc.replaceRange(text, pos)
+			returnedSuggestion = ""
+			updateSuggestionStatus(false)
+		}
+		}
+		function acceptSuggestion(text){
+			displayGrey("")
+			doc.replaceRange(text, pos)
+			returnedSuggestion = ""
+			updateSuggestionStatus(false)
+		}
+		function displayGrey(text){
+			if(!text){
+				document.querySelector(".blackbox-suggestion").remove()
+				return
+			}
+			var el = document.querySelector(".blackbox-suggestion")
+			if(!el){
+				el = document.createElement('span')
+				el.classList.add("blackbox-suggestion")
+				el.style = 'color:grey'
+				el.innerText = text
+			}
+			else{
+				el.innerText = text
+			}
+			
+			var lineIndex = pos.line;
+			editor.getElementsByClassName('CodeMirror-line')[lineIndex].appendChild(el)
+		}
+		function updateSuggestionStatus(s){
+			suggestionDisplayed = s
+			window.postMessage({source: 'updateSuggestionStatus', status: suggestionDisplayed, suggestion: returnedSuggestion})
+		}
+		window.addEventListener('message', (event)=>{
+		if (event.source !== window ) return
+		if (event.data.source == 'return'){
+			isReturningSuggestion = false
+			const formattedCode = formatCode(event.data.payload.data)
+			returnedSuggestion = formattedCode
+			displayGrey(formattedCode)
+			updateSuggestionStatus(true)
+		}
+		if(event.data.source == 'suggestReturn'){
+			returnedSuggestion = event.data.payload.data
+			displayGrey(event.data.payload.data)
+			updateSuggestionStatus(true)
+		}
+		if(event.data.source == 'suggestionsStatus'){
+			suggestionsStatus = event.data.payload.enabled
+		}
+		if(event.data.source == 'acceptSuggestion'){
+			
+			acceptSuggestion(event.data.suggestion)
+		}
+		})
+		document.addEventListener("keyup", function(){
+			returnedSuggestion = ""
+			updateSuggestionStatus(false)
+		})
+		function formatCode(data) {
+			if (Array.isArray(data)) {
+				var finalCode = ""
+				var pairs = []
+		
+				const commentSymbol = returnCommentSymbol(docLang)
+				data.forEach((codeArr, idx) => {
+					const code = codeArr[0]
+					var desc = codeArr[1]
+					const descArr = desc.split("\n")
+					var finalDesc = ""
+					descArr.forEach((descLine, idx) => {
+						const whiteSpace = descLine.search(/\S/)
+						if (commentSymbol.length < 2 || idx === 0) {
+							finalDesc += insert(descLine, whiteSpace, commentSymbol[0])
+						}
+						if (commentSymbol.length > 1 && idx === descArr.length - 1) {
+							finalDesc = finalDesc + commentSymbol[1] + "\n"
+						}
+					})
+		
+					finalCode += finalDesc + "\n\n" + code
+					pairs.push(finalCode)
+				})
+				return "\n"+pairs.join("\n")
+			}
+		
+			return "\n"+data
+		}
+		
+		function insert(str, index, value) {
+			return str.substr(0, index) + value + str.substr(index)
+		}
+	</script></body></html>
